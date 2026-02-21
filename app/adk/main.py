@@ -426,50 +426,57 @@ Be precise. If the chart is unclear or low resolution, state what you can and ca
 async def analyze_chart(request_data: dict):
     """Analyze a financial chart image using Gemini Vision."""
     try:
-        import google.generativeai as genai
         import base64
-        
+
         image_data = request_data.get("image")
         mime_type = request_data.get("mime_type", "image/png")
-        
+
         if not image_data:
             raise HTTPException(status_code=400, detail="Missing image data")
-        
+
         # Strip data URI prefix if present
         if "," in image_data:
             image_data = image_data.split(",", 1)[1]
-        
-        # Configure Gemini
+
+        image_bytes = base64.b64decode(image_data)
+
         project_id = os.getenv("PROJECT_ID", "sdr-agent-486508")
         location = os.getenv("REGION", "us-central1")
-        
-        use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "False").lower() == "true"
-        
-        if use_vertex:
+        gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+
+        analysis_text = None
+
+        # Path 1: Vertex AI (preferred — Cloud Run uses service account auth)
+        try:
             import vertexai
-            from vertexai.generative_models import GenerativeModel, Part, Image as VertexImage
+            from vertexai.generative_models import GenerativeModel, Part
             vertexai.init(project=project_id, location=location)
             model = GenerativeModel("gemini-2.0-flash")
-            image_bytes = base64.b64decode(image_data)
             image_part = Part.from_data(data=image_bytes, mime_type=mime_type)
             response = model.generate_content([CHART_ANALYSIS_PROMPT, image_part])
             analysis_text = response.text
-        else:
-            genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+            print(f"✅ Chart analysis via Vertex AI ({len(analysis_text)} chars)")
+        except Exception as vertex_err:
+            print(f"⚠️ Vertex AI path failed: {vertex_err}, trying google-generativeai...")
+
+            # Path 2: google.generativeai with API key
+            if not gemini_api_key:
+                raise RuntimeError(f"Vertex AI failed and GEMINI_API_KEY not set. Vertex error: {vertex_err}")
+
+            import google.generativeai as genai
+            genai.configure(api_key=gemini_api_key)
             model = genai.GenerativeModel("gemini-2.0-flash")
-            image_bytes = base64.b64decode(image_data)
             image_part = {"mime_type": mime_type, "data": image_bytes}
             response = model.generate_content([CHART_ANALYSIS_PROMPT, image_part])
             analysis_text = response.text
-        
-        print(f"✅ Chart analysis complete ({len(analysis_text)} chars)")
-        
+            print(f"✅ Chart analysis via Gemini API key ({len(analysis_text)} chars)")
+
         return {
             "status": "success",
             "analysis": analysis_text,
             "model": "gemini-2.0-flash-vision"
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -477,6 +484,7 @@ async def analyze_chart(request_data: dict):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Chart analysis failed: {str(e)}")
+
 
 if __name__ == "__main__":
     import uvicorn
