@@ -10,6 +10,11 @@ os.environ['GRPC_VERBOSITY'] = 'ERROR'
 os.environ['GLOG_minloglevel'] = '2'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
+# CRITICAL: Clear stale GCP credentials path if it doesn't exist
+gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+if gcp_creds and not os.path.exists(gcp_creds):
+    os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+
 # Suppress all warnings
 warnings.filterwarnings('ignore')
 
@@ -59,6 +64,7 @@ from app.adk.agents.contradiction_agent import create_contradiction_agent
 from app.adk.agents.synthesis_agent import create_synthesis_agent
 from app.adk.agents.alert_agent import create_alert_agent
 from app.adk.agents.sentiment_proxy_agent import create_sentiment_proxy_agent
+from app.adk.agents.financial_agent import create_financial_agent
 from app.adk.response_handler import ADKResponseHandler
 from app.config.adk_config import ADK_CONFIG
 
@@ -103,7 +109,7 @@ class TradeSageOrchestrator:
         self.response_handler = ADKResponseHandler()
         self.cache = {}  # Simple in-memory cache: {hypothesis_text_hash: result}
         
-        print("✅ TradeSage ADK Orchestrator (High-Performance Parallel Engine) initialized")
+        print("[OK] TradeSage ADK Orchestrator (High-Performance Parallel Engine) initialized")
         
     def _initialize_agents(self) -> Dict[str, Agent]:
         """Initialize all agents."""
@@ -115,19 +121,20 @@ class TradeSageOrchestrator:
             "contradiction": create_contradiction_agent,
             "synthesis": create_synthesis_agent,
             "alert": create_alert_agent,
-            "sentiment": create_sentiment_proxy_agent
+            "sentiment": create_sentiment_proxy_agent,
+            "chat": create_financial_agent
         }
         
         for name, factory in agent_factories.items():
             try:
-                print(f"📡 Initializing {name} agent...")
+                print(f"[LOG] Initializing {name} agent...")
                 agents[name] = factory()
-                print(f"✅ {name.capitalize()} agent initialized")
+                print(f"[OK] {name.capitalize()} agent initialized")
             except Exception as e:
-                print(f"❌ Error initializing {name} agent: {str(e)}")
+                print(f"[ERROR] Error initializing {name} agent: {str(e)}")
                 raise
                 
-        print(f"✅ All {len(agents)} agents initialized successfully")
+        print(f"[OK] All {len(agents)} agents initialized successfully")
         return agents
     
     async def process_hypothesis(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -147,15 +154,15 @@ class TradeSageOrchestrator:
         # Check cache
         cache_key = hypothesis_text.lower()
         if cache_key in self.cache:
-            print(f"🎯 Cache hit for: {hypothesis_text[:50]}...")
+            print(f"[HIT] Cache hit for: {hypothesis_text[:50]}...")
             return self.cache[cache_key]
         
-        print(f"🚀 Starting optimized ADK workflow for: {hypothesis_text[:100]}...")
+        print(f"[LOG] Starting optimized ADK workflow for: {hypothesis_text[:100]}...")
         start_time = asyncio.get_event_loop().time()
         
         try:
             # Phase 1: Parallel Hypothesis Processing & Context Analysis
-            print("🧠 Processing hypothesis and context (Parallel)...")
+            print("[LOG] Processing hypothesis and context (Parallel)...")
             hypothesis_task = self._run_agent_completely_silent("hypothesis", {
                 "hypothesis": hypothesis_text,
                 "mode": input_data.get("mode", "analyze")
@@ -173,11 +180,11 @@ class TradeSageOrchestrator:
             
             context = self._parse_json_response(context_result["final_text"])
             asset_info = context.get("asset_info", {})
-            print(f"   ✅ Asset: {asset_info.get('primary_symbol', 'N/A')} | Hypothesis: {processed_hypothesis[:60]}...")
+            print(f"   [OK] Asset: {asset_info.get('primary_symbol', 'N/A')} | Hypothesis: {processed_hypothesis[:60]}...")
             
             # Phase 2: Parallel Research, Sentiment, and Contradiction Detection
             # Note: Contradiction agent has its own news_search tool, so it can run mostly in parallel
-            print("📊 Conducting research, sentiment, and risk analysis (Parallel)...")
+            print("[LOG] Conducting research, sentiment, and risk analysis (Parallel)...")
             
             research_task = self._run_agent_completely_silent("research", {
                 "hypothesis": processed_hypothesis,
@@ -213,10 +220,10 @@ class TradeSageOrchestrator:
                 "sentiment_proxy": sentiment_analysis
             }
             
-            print(f"   ✅ Research/Sentiment/Risk complete")
+            print(f"   [OK] Research/Sentiment/Risk complete")
             
             # Phase 3: Parallel Synthesis and Alerts (Alert agent can run once contradictions are known)
-            print("🔬 Synthesizing final analysis...")
+            print("[LOG] Synthesizing final analysis...")
             synthesis_result = await self._run_agent_completely_silent("synthesis", {
                 "hypothesis": processed_hypothesis,
                 "context": context,
@@ -229,7 +236,7 @@ class TradeSageOrchestrator:
             confidence_score = synthesis_data.get("confidence_score", 0.5)
             
             # Step 6: Generate Alerts (Needs synthesis confidence)
-            print("🚨 Generating alerts...")
+            print("[LOG] Generating alerts...")
             alert_result = await self._run_agent_completely_silent("alert", {
                 "hypothesis": processed_hypothesis,
                 "context": context,
@@ -267,7 +274,7 @@ class TradeSageOrchestrator:
                 }
             }
             
-            print(f"✅ Workflow completed in {processing_time:.2f}s")
+            print(f"[OK] Workflow completed in {processing_time:.2f}s")
             
             # Add metadata for main.py compatibility
             result["metadata"] = {
@@ -282,7 +289,7 @@ class TradeSageOrchestrator:
             return result
             
         except Exception as e:
-            print(f"❌ Orchestration error: {str(e)}")
+            print(f"[ERROR] Orchestration error: {str(e)}")
             import traceback
             traceback.print_exc()
             return {
@@ -290,6 +297,41 @@ class TradeSageOrchestrator:
                 "error": str(e),
                 "method": "adk_clean_output",
                 "partial_data": {}
+            }
+
+    async def chat(self, message: str, session_id: str = None) -> Dict[str, Any]:
+        """Provide a multi-turn chat experience using the financial agent."""
+        
+        if not message:
+            return {"status": "error", "error": "Empty message"}
+            
+        if not session_id:
+            import uuid
+            session_id = f"chat_{uuid.uuid4().hex[:8]}"
+            
+        print(f"[LOG] Chat request in session {session_id}: {message[:50]}...")
+        
+        try:
+            # Run the chat agent
+            response_data = await self._run_agent_completely_silent("chat", {
+                "message": message,
+                "session_id": session_id
+            })
+            
+            return {
+                "status": "success",
+                "session_id": session_id,
+                "response": response_data.get("final_text", ""),
+                "tool_results": response_data.get("tool_results", {}),
+                "timestamp": asyncio.get_event_loop().time()
+            }
+            
+        except Exception as e:
+            print(f"[ERROR] Chat error: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "session_id": session_id
             }
             
     def _extract_price_from_tools(self, research_result: Dict[str, Any]) -> float:
@@ -411,7 +453,7 @@ class TradeSageOrchestrator:
             
             # Log tool usage without individual function call details
             if response_data["function_calls"]:
-                print(f"   🔧 {agent_name} used {len(response_data['function_calls'])} tools")
+                print(f"   [TOOL] {agent_name} used {len(response_data['function_calls'])} tools")
                 # Group by tool name for cleaner output
                 tool_counts = {}
                 for call in response_data["function_calls"]:
@@ -425,13 +467,13 @@ class TradeSageOrchestrator:
                         print(f"      - {tool_name}")
             
             if response_data["errors"]:
-                print(f"   ⚠️  {agent_name} reported {len(response_data['errors'])} errors")
+                print(f"   [WARN] {agent_name} reported {len(response_data['errors'])} errors")
             
             return response_data
             
         except Exception as e:
             error_msg = f"Error running {agent_name} agent: {str(e)}"
-            print(f"❌ {error_msg}")
+            print(f"[ERROR] {error_msg}")
             return {
                 "final_text": error_msg,
                 "text_parts": [error_msg],
@@ -516,7 +558,7 @@ class TradeSageOrchestrator:
                                 "source": item.get("source", "Market Analysis")[:40],
                                 "strength": item.get("strength", "Medium")
                             })
-                    return contradictions[:5]  # Limit to 5
+                    return contradictions[:10]  # Increased limit to 10
         except:
             pass
         
@@ -587,7 +629,7 @@ class TradeSageOrchestrator:
                 }
             ]
         
-        return contradictions[:5]
+        return contradictions[:10] # Increased limit to 10
 
     def _parse_synthesis_response(self, response_text: str, contradictions: List[Dict]) -> Dict[str, Any]:
         """Parse synthesis response and extract confirmations - FIXED VERSION"""
@@ -690,11 +732,30 @@ class TradeSageOrchestrator:
         conf_count = len(confirmations)
         contra_count = len(contradictions)
         
-        if conf_count == 0 and contra_count == 0:
+        # Try to extract explicit confidence score from response text
+        agent_score = None
+        score_match = re.search(r'(?:confidence|score):\s*(0\.\d+)', response_text.lower())
+        if score_match:
+            try:
+                agent_score = float(score_match.group(1))
+            except:
+                pass
+        
+        if agent_score is not None:
+            confidence = agent_score
+        elif conf_count == 0 and contra_count == 0:
             confidence = 0.5
         else:
+            # More dynamic fallback calculation
+            # Use base 0.5 and shift based on count ratio
             ratio = conf_count / (conf_count + contra_count)
-            confidence = 0.3 + (ratio * 0.4)  # Range: 0.3 to 0.7
+            # Center at 0.5, range from 0.2 to 0.8
+            confidence = 0.5 + (ratio - 0.5) * 0.6
+            
+            # Add a tiny random variation (jitter) as requested by user
+            import random
+            jitter = random.uniform(-0.03, 0.03)
+            confidence += jitter
             
         # Bound confidence
         confidence = max(0.15, min(0.85, confidence))
@@ -738,7 +799,7 @@ Primary risks involve valuation concerns, competitive pressures, and market cond
         
         return {
             "analysis": synthesis_text,
-            "confirmations": confirmations[:5],  # Limit to 5
+            "confirmations": confirmations[:10],
             "confidence_score": confidence
         }
 
@@ -919,6 +980,9 @@ Analysis Summary:
 - Synthesis: {synthesis}
 
 Provide specific, actionable alerts with clear priorities and investment recommendations."""
+
+        elif agent_name == "chat":
+            return input_data.get('message', '')
         
         return str(input_data)
     
@@ -1073,7 +1137,7 @@ Provide specific, actionable alerts with clear priorities and investment recomme
 # Global orchestrator instance
 try:
     orchestrator = TradeSageOrchestrator()
-    print("🚀 TradeSage ADK Orchestrator (High-Performance Parallel Engine) ready")
+    print("[OK] TradeSage ADK Orchestrator (High-Performance Parallel Engine) ready")
 except Exception as e:
-    print(f"❌ Failed to initialize TradeSage Orchestrator: {str(e)}")
+    print(f"[ERROR] Failed to initialize TradeSage Orchestrator: {str(e)}")
     orchestrator = None

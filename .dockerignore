@@ -14,8 +14,8 @@ docs/
 .env.*
 deploy.env
 
-# Python cache and virtual environments
-__pycache__/
+    # Python cache and virtual environments
+    __pycache__/
 *.py[cod]
 *$py.class
 *.so

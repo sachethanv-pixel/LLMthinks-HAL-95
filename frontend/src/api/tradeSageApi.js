@@ -1,4 +1,5 @@
 // frontend/src/api/tradeSageApi.js
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 const API_BASE_URL = process.env.REACT_APP_API_URL || '/api';
 
 class TradeSageAPI {
@@ -11,39 +12,39 @@ class TradeSageAPI {
         },
         body: JSON.stringify(data),
       });
-      
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-      
+
       return await response.json();
     } catch (error) {
       console.error('Error processing hypothesis:', error);
       throw error;
     }
   }
-  
+
   async generateHypothesis(context) {
     return this.processHypothesis({
       mode: 'generate',
       context: context
     });
   }
-  
+
   async refineIdea(idea) {
     return this.processHypothesis({
       mode: 'refine',
       idea: idea
     });
   }
-  
+
   async analyzeHypothesis(hypothesis) {
     return this.processHypothesis({
       mode: 'analyze',
       hypothesis: hypothesis
     });
   }
-  
+
   // New dashboard endpoints
   async getDashboardData() {
     try {
@@ -57,7 +58,7 @@ class TradeSageAPI {
       throw error;
     }
   }
-  
+
   async getHypothesisDetail(hypothesisId) {
     try {
       const response = await fetch(`${API_BASE_URL}/hypothesis/${hypothesisId}`);
@@ -70,7 +71,7 @@ class TradeSageAPI {
       throw error;
     }
   }
-  
+
   async getAlerts() {
     try {
       const response = await fetch(`${API_BASE_URL}/alerts`);
@@ -83,7 +84,7 @@ class TradeSageAPI {
       throw error;
     }
   }
-  
+
   async markAlertAsRead(alertId) {
     try {
       const response = await fetch(`${API_BASE_URL}/alerts/${alertId}/read`, {
@@ -98,7 +99,28 @@ class TradeSageAPI {
       throw error;
     }
   }
-  
+
+  async chat(message, sessionId = null) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ message, session_id: sessionId }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error in chat:', error);
+      throw error;
+    }
+  }
+
   async healthCheck() {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);

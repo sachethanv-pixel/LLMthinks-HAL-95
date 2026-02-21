@@ -40,8 +40,8 @@ Format confirmations as:
 
 Create a balanced synthesis with:
 - Executive summary of investment merit
-- 3-5 specific confirmations with real data
-- Confidence assessment (0.15-0.85)
+- 6-8 specific confirmations with real data
+- Explicit confidence assessment (numeric range 0.15-0.85). Vary it based on research quality.
 - Clear recommendation
 """
 

@@ -53,5 +53,11 @@ AGENT_CONFIGS = {
         "description": "Analyzes retail sentiment vs institutional 'Smart Money' flows",
         "model": "gemini-2.0-flash",
         "temperature": 0.3,
+    },
+    "financial_agent": {
+        "name": "financial_expert",
+        "description": "Expert financial advisor providing deep analysis and chat capabilities",
+        "model": "gemini-2.0-flash",
+        "temperature": 0.2,
     }
 }

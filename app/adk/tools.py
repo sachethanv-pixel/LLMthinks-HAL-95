@@ -147,7 +147,7 @@ def smart_money_tool(instrument: str) -> Dict[str, Any]:
     except Exception as e:
         return {"status": "error", "error": str(e)}
 
-def hybrid_research_tool(hypothesis: str, instruments: List[str] = None) -> Dict[str, Any]:
+def hybrid_research_tool(hypothesis: str, instruments: List[str]) -> Dict[str, Any]:
     """Perform hybrid research combining internal historical data (RAG) and real-time APIs."""
     try:
         from app.services.hybrid_rag_service import hybrid_research

@@ -26,7 +26,7 @@ def create_db_engine():
 
     # Option 1: Local / Direct Connection (if DB_HOST is provided)
     if DB_HOST:
-        print(f"🏠 Connecting to Local/Direct PostgreSQL at {DB_HOST}:{DB_PORT}...")
+        print(f"[LOCAL] Connecting to Local/Direct PostgreSQL at {DB_HOST}:{DB_PORT}...")
         connection_url = f"postgresql+pg8000://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE_NAME}"
         engine = create_engine(
             connection_url,
@@ -37,7 +37,7 @@ def create_db_engine():
         return engine, None
 
     # Option 2: Cloud SQL Connector
-    print("🐘 Connecting to Cloud SQL PostgreSQL via Connector...")
+    print("[CLOUD] Connecting to Cloud SQL PostgreSQL via Connector...")
     try:
         connector = Connector()
         
@@ -59,13 +59,13 @@ def create_db_engine():
         )
         return engine, connector
     except Exception as e:
-        print(f"❌ Failed to initialize Cloud SQL Connector: {e}")
+        print(f"[ERROR] Failed to initialize Cloud SQL Connector: {e}")
         print("💡 TIP: If you are running locally without GCP credentials, set DB_HOST and DB_PORT in your .env file.")
         raise
 
 # Create the engine
 engine, connector = create_db_engine()
-print("✅ Database engine created")
+print("[OK] Database engine created")
 
 # Create session maker
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -74,9 +74,9 @@ def create_tables():
     """Create all tables in the database."""
     try:
         Base.metadata.create_all(bind=engine)
-        print("✅ Database tables created successfully")
+        print("[OK] Database tables created successfully")
     except Exception as e:
-        print(f"❌ Error creating tables: {e}")
+        print(f"[ERROR] Error creating tables: {e}")
         raise
 
 def get_db():

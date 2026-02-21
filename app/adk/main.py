@@ -1,28 +1,58 @@
-# app/adk/main.py - Updated with minor fixes
+# Diagnostic prints for Cloud Run debugging
 import os
 from dotenv import load_dotenv
 
-# Load environment variables BEFORE any other app imports
-load_dotenv(override=True)
+print("--- TradeSage AI Starting Up ---")
+print(f"[LOG] Process PID: {os.getpid()}")
+print(f"[LOG] Current Working Directory: {os.getcwd()}")
+
+# Load environment variables cautiously
+if os.path.exists(".env"):
+    print("[LOG] Found .env file, loading...")
+    load_dotenv()
+else:
+    print("[LOG] No .env file found, relying on system environment variables.")
+
+# Check CRITICAL API keys
+keys_to_check = ["ALPHA_VANTAGE_API_KEY", "FMP_API_KEY", "NEWS_API_KEY", "PROJECT_ID"]
+for key in keys_to_check:
+    val = os.getenv(key)
+    status = "[PRESENT]" if val else "[MISSING]"
+    if val and len(val) > 4:
+        masked = val[:2] + "*" * (len(val)-4) + val[-2:]
+        print(f"[LOG] {key}: {status} ({masked})")
+    else:
+        print(f"[LOG] {key}: {status}")
 
 # CRITICAL: Clear stale GCP credentials path if it doesn't exist
-# This prevenets "File not found" errors from previous projects
 gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
 if gcp_creds and not os.path.exists(gcp_creds):
-    print(f"🧹 Clearing invalid GOOGLE_APPLICATION_CREDENTIALS path: {gcp_creds}")
+    print(f"[CLEAN] Clearing invalid GOOGLE_APPLICATION_CREDENTIALS path: {gcp_creds}")
     os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+
+print("[LOG] Importing orchestrator...")
+try:
+    from app.adk.orchestrator import orchestrator
+    print("[OK] Orchestrator import successful")
+except Exception as e:
+    print(f"[ERROR] CRITICAL ERROR importing orchestrator: {str(e)}")
+    import traceback
+    traceback.print_exc()
+    # Create dummy orchestrator to avoid crash during import by uvicorn
+    orchestrator = None
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import asyncio
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, List
 import re
+import os
+from dotenv import load_dotenv
 
-from app.adk.orchestrator import orchestrator
 from app.database.database import get_db
-from app.database.crud import HypothesisCRUD, ContradictionCRUD, ConfirmationCRUD, AlertCRUD, DashboardCRUD, PriceHistoryCRUD
+from app.database.crud import DashboardCRUD, HypothesisCRUD, ContradictionCRUD, ConfirmationCRUD, AlertCRUD, PriceHistoryCRUD
 from app.utils.text_processor import ResponseProcessor
 
 def _extract_target_price(thesis: str) -> float:
@@ -40,11 +70,18 @@ app = FastAPI(title="TradeSage AI - ADK Version", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True, 
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.middleware("http")
+async def log_requests(request, call_next):
+    print(f"DEBUG: Incoming {request.method} request to {request.url.path}")
+    response = await call_next(request)
+    print(f"DEBUG: Response status: {response.status_code}")
+    return response
 
 @app.get("/")
 async def root():
@@ -311,6 +348,29 @@ async def mark_alert_read_adk(alert_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         print(f"❌ Error marking alert {alert_id} as read: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+        
+@app.post("/chat")
+async def chat_with_agent(request_data: dict):
+    """Chat with the financial agent."""
+    try:
+        message = request_data.get("message")
+        session_id = request_data.get("session_id")
+        
+        if not message:
+            raise HTTPException(status_code=400, detail="Missing message")
+            
+        result = await orchestrator.chat(message, session_id)
+        
+        if result.get("status") == "error":
+            raise HTTPException(status_code=500, detail=result.get("error"))
+            
+        return result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
         
 if __name__ == "__main__":

@@ -14,7 +14,17 @@ const TradingDashboard = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notification, setNotification] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  
+
+  // Chat state
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState([
+    { role: 'assistant', text: 'Hello! I am your TradeSage Financial Agent. How can I help you analyze the markets today?' }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatSessionId, setChatSessionId] = useState(null);
+  const chatEndRef = React.useRef(null);
+
   // Form state
   const [formData, setFormData] = useState({
     mode: 'analyze',
@@ -27,11 +37,17 @@ const TradingDashboard = () => {
     fetchDashboardData();
   }, []);
 
+  useEffect(() => {
+    if (chatEndRef.current) {
+      chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [chatMessages, isChatOpen]);
+
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
       const response = await TradeSageAPI.getDashboardData();
-      
+
       if (response.status === 'success') {
         setHypotheses(response.data);
         if (response.data.length > 0 && !selectedHypothesis) {
@@ -51,21 +67,21 @@ const TradingDashboard = () => {
   const handleFormSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
-    
+
     try {
-      const payload = formData.mode === 'generate' 
+      const payload = formData.mode === 'generate'
         ? { mode: 'generate', context: formData.context }
         : formData.mode === 'refine'
-        ? { mode: 'refine', idea: formData.idea }
-        : { mode: 'analyze', hypothesis: formData.hypothesis };
+          ? { mode: 'refine', idea: formData.idea }
+          : { mode: 'analyze', hypothesis: formData.hypothesis };
 
       const response = await TradeSageAPI.processHypothesis(payload);
-      
+
       if (response.status === 'success') {
         setShowForm(false);
         setFormData({ mode: 'analyze', hypothesis: '', idea: '', context: '' });
         await fetchDashboardData();
-        
+
         setNotification({
           type: 'success',
           message: `Hypothesis processed successfully! Analysis added to dashboard.`
@@ -89,6 +105,36 @@ const TradingDashboard = () => {
       ...formData,
       [e.target.name]: e.target.value
     });
+  };
+
+  const handleChatSubmit = async (e) => {
+    e.preventDefault();
+    if (!chatInput.trim() || isChatLoading) return;
+
+    const userMessage = chatInput.trim();
+    setChatMessages(prev => [...prev, { role: 'user', text: userMessage }]);
+    setChatInput('');
+    setIsChatLoading(true);
+
+    try {
+      const response = await TradeSageAPI.chat(userMessage, chatSessionId);
+
+      if (response.status === 'success') {
+        if (!chatSessionId) setChatSessionId(response.session_id);
+        setChatMessages(prev => [...prev, { role: 'assistant', text: response.response }]);
+      } else {
+        throw new Error(response.error || 'Failed to get response');
+      }
+    } catch (err) {
+      console.error('Chat error:', err);
+      setChatMessages(prev => [...prev, {
+        role: 'assistant',
+        text: 'Sorry, I encountered an error. Please try again later.',
+        isError: true
+      }]);
+    } finally {
+      setIsChatLoading(false);
+    }
   };
 
   const getStatusColor = (status) => {
@@ -122,7 +168,7 @@ const TradingDashboard = () => {
         <div className="text-center p-8">
           <div className="inline-block relative">
             <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-            <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin absolute top-2 left-2" style={{animationDirection: 'reverse', animationDuration: '0.8s'}}></div>
+            <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin absolute top-2 left-2" style={{ animationDirection: 'reverse', animationDuration: '0.8s' }}></div>
           </div>
           <h3 className="mt-6 text-xl font-semibold text-gray-700">Loading TradeSage Dashboard</h3>
           <p className="text-gray-500 mt-2">Analyzing market data...</p>
@@ -142,7 +188,7 @@ const TradingDashboard = () => {
           </div>
           <h2 className="text-2xl font-bold text-red-600 mb-4">Dashboard Error</h2>
           <p className="text-gray-600 mb-6">{error}</p>
-          <button 
+          <button
             onClick={fetchDashboardData}
             className="px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all duration-200 font-semibold shadow-lg hover:shadow-xl"
           >
@@ -163,7 +209,7 @@ const TradingDashboard = () => {
           onClose={() => setNotification(null)}
         />
       )}
-      
+
       <div className="flex">
         {/* Enhanced Sidebar */}
         <div className={`${sidebarCollapsed ? 'w-16' : 'w-80'} bg-white shadow-2xl transition-all duration-300 min-h-screen border-r border-gray-100`}>
@@ -216,11 +262,10 @@ const TradingDashboard = () => {
               {hypotheses.map((hyp) => (
                 <div
                   key={hyp.id}
-                  className={`p-3 rounded-xl cursor-pointer transition-all duration-200 ${
-                    selectedHypothesis?.id === hyp.id 
-                      ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 shadow-md' 
+                  className={`p-3 rounded-xl cursor-pointer transition-all duration-200 ${selectedHypothesis?.id === hyp.id
+                      ? 'bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 shadow-md'
                       : 'hover:bg-gray-50 border border-transparent'
-                  }`}
+                    }`}
                   onClick={() => setSelectedHypothesis(hyp)}
                   title={sidebarCollapsed ? hyp.title : ''}
                 >
@@ -283,7 +328,7 @@ const TradingDashboard = () => {
                 <p className="text-gray-600 mb-8 max-w-md mx-auto">
                   Start by analyzing your first trading hypothesis. Our multi-agent system will provide comprehensive contradictions and confirmations.
                 </p>
-                <button 
+                <button
                   onClick={() => setShowForm(true)}
                   className="bg-gradient-to-r from-blue-600 to-purple-600 text-white px-8 py-4 rounded-xl font-semibold hover:shadow-xl transition-all duration-200 transform hover:scale-105"
                 >
@@ -371,11 +416,10 @@ const TradingDashboard = () => {
               <div className="border-b border-gray-100">
                 <nav className="flex">
                   <button
-                    className={`px-8 py-4 text-sm font-semibold transition-all relative ${
-                      activeTab === 'analysis'
+                    className={`px-8 py-4 text-sm font-semibold transition-all relative ${activeTab === 'analysis'
                         ? 'text-blue-600 bg-blue-50 border-b-2 border-blue-600'
                         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
+                      }`}
                     onClick={() => setActiveTab('analysis')}
                   >
                     <span className="flex items-center">
@@ -386,11 +430,10 @@ const TradingDashboard = () => {
                     </span>
                   </button>
                   <button
-                    className={`px-8 py-4 text-sm font-semibold transition-all relative ${
-                      activeTab === 'trends'
+                    className={`px-8 py-4 text-sm font-semibold transition-all relative ${activeTab === 'trends'
                         ? 'text-blue-600 bg-blue-50 border-b-2 border-blue-600'
                         : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
-                    }`}
+                      }`}
                     onClick={() => setActiveTab('trends')}
                   >
                     <span className="flex items-center">
@@ -428,11 +471,10 @@ const TradingDashboard = () => {
                             </p>
                             <div className="flex justify-between items-center text-xs">
                               <span className="text-gray-500 truncate mr-2">{item.source}</span>
-                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                item.strength === 'Strong' 
-                                  ? 'bg-red-100 text-red-800' 
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${item.strength === 'Strong'
+                                  ? 'bg-red-100 text-red-800'
                                   : 'bg-orange-100 text-orange-800'
-                              }`}>
+                                }`}>
                                 {item.strength}
                               </span>
                             </div>
@@ -466,11 +508,10 @@ const TradingDashboard = () => {
                             </p>
                             <div className="flex justify-between items-center text-xs">
                               <span className="text-gray-500 truncate mr-2">{item.source}</span>
-                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                                item.strength === 'Strong'
+                              <span className={`px-3 py-1 rounded-full text-xs font-bold ${item.strength === 'Strong'
                                   ? 'bg-green-100 text-green-800'
                                   : 'bg-yellow-100 text-yellow-800'
-                              }`}>
+                                }`}>
                                 {item.strength}
                               </span>
                             </div>
@@ -543,22 +584,22 @@ const TradingDashboard = () => {
                               <AreaChart data={formatPriceData(selectedHypothesis.trendData)}>
                                 <defs>
                                   <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3}/>
-                                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1}/>
+                                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0.1} />
                                   </linearGradient>
                                 </defs>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                                <XAxis 
-                                  dataKey="name" 
+                                <XAxis
+                                  dataKey="name"
                                   stroke="#6B7280"
                                   fontSize={12}
                                 />
-                                <YAxis 
+                                <YAxis
                                   stroke="#6B7280"
                                   fontSize={12}
                                   domain={['dataMin - 1', 'dataMax + 1']}
                                 />
-                                <Tooltip 
+                                <Tooltip
                                   contentStyle={{
                                     backgroundColor: 'white',
                                     border: '1px solid #E5E7EB',
@@ -588,7 +629,7 @@ const TradingDashboard = () => {
                               const prevValue = index > 0 ? selectedHypothesis.trendData[selectedHypothesis.trendData.length - 7 + index - 1]?.value : point.value;
                               const change = point.value - prevValue;
                               const changePercent = prevValue ? ((change / prevValue) * 100) : 0;
-                              
+
                               return (
                                 <div key={index} className="px-6 py-4 hover:bg-gray-50 transition-colors">
                                   <div className="flex justify-between items-center">
@@ -596,9 +637,8 @@ const TradingDashboard = () => {
                                     <div className="text-right">
                                       <span className="font-bold text-xl text-gray-800">${point.value}</span>
                                       {index > 0 && (
-                                        <div className={`text-sm font-medium ${
-                                          change >= 0 ? 'text-green-600' : 'text-red-600'
-                                        }`}>
+                                        <div className={`text-sm font-medium ${change >= 0 ? 'text-green-600' : 'text-red-600'
+                                          }`}>
                                           {change >= 0 ? '+' : ''}{change.toFixed(2)} ({changePercent.toFixed(2)}%)
                                         </div>
                                       )}
@@ -637,7 +677,7 @@ const TradingDashboard = () => {
                 </button>
               </div>
             </div>
-            
+
             <form onSubmit={handleFormSubmit} className="p-6">
               <div className="mb-6">
                 <label className="block text-sm font-semibold text-gray-700 mb-3">
@@ -651,11 +691,10 @@ const TradingDashboard = () => {
                   ].map((mode) => (
                     <label
                       key={mode.value}
-                      className={`relative cursor-pointer rounded-xl border-2 p-4 transition-all ${
-                        formData.mode === mode.value
+                      className={`relative cursor-pointer rounded-xl border-2 p-4 transition-all ${formData.mode === mode.value
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
+                        }`}
                     >
                       <input
                         type="radio"
@@ -765,6 +804,120 @@ const TradingDashboard = () => {
           </div>
         </div>
       )}
+
+      {/* Financial Chatbot UI */}
+      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+        {/* Chat window */}
+        {isChatOpen && (
+          <div className="w-96 h-[500px] bg-white rounded-2xl shadow-2xl flex flex-col border border-gray-100 overflow-hidden mb-4 animate-in slide-in-from-bottom-5 duration-300">
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-4 flex items-center justify-between shadow-md">
+              <div className="flex items-center">
+                <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center mr-3 text-xl">
+                  👨‍💼
+                </div>
+                <div>
+                  <h3 className="text-white font-bold leading-none">Financial Agent</h3>
+                  <p className="text-blue-100 text-xs mt-1">AI-Powered Expert</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsChatOpen(false)}
+                className="text-white hover:text-blue-200 transition-colors"
+                title="Close chat"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-slate-50">
+              {chatMessages.map((msg, index) => (
+                <div
+                  key={index}
+                  className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                >
+                  <div
+                    className={`max-w-[85%] rounded-2xl p-3 shadow-sm ${msg.role === 'user'
+                        ? 'bg-blue-600 text-white rounded-br-none'
+                        : msg.isError
+                          ? 'bg-red-50 text-red-600 border border-red-100 rounded-bl-none'
+                          : 'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
+                      }`}
+                  >
+                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                  </div>
+                </div>
+              ))}
+              {isChatLoading && (
+                <div className="flex justify-start">
+                  <div className="bg-white border border-gray-100 rounded-2xl rounded-bl-none p-3 shadow-sm">
+                    <div className="flex space-x-1">
+                      <div className="w-2 h-2 bg-blue-400 rounded-full animate-bounce"></div>
+                      <div className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                      <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            <form onSubmit={handleChatSubmit} className="p-4 bg-white border-t border-gray-100">
+              <div className="relative">
+                <input
+                  type="text"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Ask about markets, stocks, or crypto..."
+                  className="w-full pr-12 pl-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all text-sm outline-none"
+                  disabled={isChatLoading}
+                />
+                <button
+                  type="submit"
+                  disabled={!chatInput.trim() || isChatLoading}
+                  className="absolute right-2 top-1.5 p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-30"
+                >
+                  <svg className="w-6 h-6 rotate-90" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
+                  </svg>
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 text-center mt-2">
+                Powered by Gemini 2.0 Flash • Multi-Agent Analysis
+              </p>
+            </form>
+          </div>
+        )}
+
+        {/* Chat toggle button */}
+        <button
+          onClick={() => setIsChatOpen(!isChatOpen)}
+          className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center transition-all duration-300 transform hover:scale-110 active:scale-95 ${isChatOpen
+              ? 'bg-white text-blue-600 border-2 border-blue-600 rotate-90'
+              : 'bg-gradient-to-br from-blue-600 to-purple-600 text-white'
+            }`}
+          title={isChatOpen ? 'Close Chat' : 'Chat with Financial Agent'}
+        >
+          {isChatOpen ? (
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          ) : (
+            <div className="relative">
+              <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
+              </svg>
+              {!isChatOpen && (
+                <span className="absolute -top-1 -right-1 flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-300 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-400"></span>
+                </span>
+              )}
+            </div>
+          )}
+        </button>
+      </div>
     </div>
   );
 };
