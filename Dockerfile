@@ -3,8 +3,10 @@
 FROM node:18-slim AS frontend-builder
 
 WORKDIR /frontend
-COPY frontend/package*.json ./
-RUN npm install --legacy-peer-deps --silent
+COPY frontend/package.json ./
+# Fresh install — overrides in package.json force ajv@^8 and ajv-keywords@^5
+RUN npm install --silent && \
+    npm install ajv@^8.0.0 ajv-keywords@^5.0.0 --save-dev --silent
 COPY frontend/ ./
 
 # Build with the production API URL pointing to same Cloud Run service
