@@ -728,11 +728,15 @@ const TradingDashboard = () => {
 
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
             <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-90vh overflow-y-auto">
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-6 rounded-t-2xl">
+              <div className={`p-6 rounded-t-2xl ${formData.mode === 'generate' ? 'bg-gradient-to-r from-emerald-600 to-teal-700' : 'bg-gradient-to-r from-blue-600 to-purple-600'}`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold text-white">Submit Trading Hypothesis</h2>
-                    <p className="text-blue-100 mt-1">Let our AI agents analyze your trading idea</p>
+                    <h2 className="text-2xl font-bold text-white">
+                      {formData.mode === 'generate' ? '🔭 Sector Discovery Engine' : 'Submit Trading Hypothesis'}
+                    </h2>
+                    <p className={`mt-1 text-sm ${formData.mode === 'generate' ? 'text-emerald-100' : 'text-blue-100'}`}>
+                      {formData.mode === 'generate' ? 'Find the top companies with growth potential in any sector' : 'Let our AI agents analyze your trading idea'}
+                    </p>
                   </div>
                   <button
                     onClick={() => setShowForm(false)}
@@ -752,13 +756,15 @@ const TradingDashboard = () => {
                     {[
                       { value: 'analyze', label: 'Analyze', icon: '🔍', desc: 'Existing hypothesis' },
                       { value: 'refine', label: 'Refine', icon: '✨', desc: 'Trading idea' },
-                      { value: 'generate', label: 'Generate', icon: '🚀', desc: 'New hypothesis' }
+                      { value: 'generate', label: 'Discover', icon: '🔭', desc: 'Sector picks' }
                     ].map((mode) => (
                       <label
                         key={mode.value}
                         className={`relative cursor-pointer rounded-xl border-2 p-4 transition-all ${formData.mode === mode.value
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                            ? mode.value === 'generate'
+                              ? 'border-emerald-500 bg-emerald-50'
+                              : 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                           }`}
                       >
                         <input
@@ -821,21 +827,59 @@ const TradingDashboard = () => {
 
                 {formData.mode === 'generate' && (
                   <div className="mb-6">
-                    <label className="block text-sm font-semibold text-gray-700 mb-3">
-                      <span className="flex items-center">
-                        <span className="text-green-600 mr-2">🚀</span>
-                        Market Context (Optional)
-                      </span>
+                    {/* Generate mode header */}
+                    <div className="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-2xl p-5 mb-5 text-white">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="w-9 h-9 bg-white bg-opacity-20 rounded-xl flex items-center justify-center text-lg">🔭</div>
+                        <div>
+                          <div className="font-bold text-base">Sector Discovery Engine</div>
+                          <div className="text-emerald-100 text-xs">AI will suggest top companies in your sector with conviction scores</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Sector quick-pick chips */}
+                    <div className="mb-4">
+                      <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Select a Sector</label>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { label: '🤖 AI & Machine Learning', val: 'Which AI and machine learning companies have the most growth potential in 2026?' },
+                          { label: '⚡ Semiconductors', val: 'Which semiconductor companies will grow the most in 2026?' },
+                          { label: '🔋 Clean Energy', val: 'Which clean energy and renewable companies should I invest in for 2026?' },
+                          { label: '🚗 Electric Vehicles', val: 'Best EV companies for 2026 with strong growth potential?' },
+                          { label: '🏥 Health Tech', val: 'Which health technology and biotech companies have high potential in 2026?' },
+                          { label: '☁️ Cloud & SaaS', val: 'Which cloud computing and SaaS companies will grow in 2026?' },
+                          { label: '🛡️ Cybersecurity', val: 'Top cybersecurity companies with growth potential for 2026?' },
+                          { label: '🚀 Space Tech', val: 'Which space technology companies are worth investing in for 2026?' },
+                        ].map((chip) => (
+                          <button
+                            key={chip.label}
+                            type="button"
+                            onClick={() => setFormData({ ...formData, context: chip.val })}
+                            className={`text-xs px-3 py-1.5 rounded-full font-medium border transition-all ${formData.context === chip.val
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md'
+                              : 'bg-white text-gray-600 border-gray-200 hover:border-emerald-400 hover:text-emerald-700 hover:bg-emerald-50'
+                              }`}
+                          >
+                            {chip.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Custom query input */}
+                    <label className="block text-sm font-semibold text-gray-700 mb-2">
+                      Or describe your sector / opportunity query
                     </label>
                     <textarea
                       name="context"
                       value={formData.context}
                       onChange={handleInputChange}
-                      placeholder="e.g., Current market conditions, sectors of interest, time horizon preferences"
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 resize-none transition-all"
-                      rows="4"
+                      placeholder="e.g., Which defense tech companies will benefit from increased government spending in 2026?"
+                      className="w-full px-4 py-3 border-2 border-emerald-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 resize-none transition-all bg-emerald-50 placeholder-gray-400"
+                      rows="3"
                     />
-                    <p className="text-xs text-gray-500 mt-2">Provide market context to help generate a relevant hypothesis</p>
+                    <p className="text-xs text-gray-400 mt-2">The AI will return 3 company picks with catalysts, risks, and conviction scores for each.</p>
                   </div>
                 )}
 
@@ -843,7 +887,10 @@ const TradingDashboard = () => {
                   <button
                     type="submit"
                     disabled={isSubmitting}
-                    className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-4 rounded-xl hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold text-lg"
+                    className={`flex-1 text-white py-4 rounded-xl hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold text-lg ${formData.mode === 'generate'
+                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600'
+                        : 'bg-gradient-to-r from-blue-600 to-purple-600'
+                      }`}
                   >
                     {isSubmitting ? (
                       <span className="flex items-center justify-center">
@@ -851,10 +898,10 @@ const TradingDashboard = () => {
                           <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle>
                           <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75"></path>
                         </svg>
-                        Analyzing with AI Agents...
+                        {formData.mode === 'generate' ? 'Discovering Sector Picks...' : 'Analyzing with AI Agents...'}
                       </span>
                     ) : (
-                      <>🧠 Analyze with TradeSage AI</>
+                      <>{formData.mode === 'generate' ? '🔭 Discover Sector Picks' : '🧠 Analyze with TradeSage AI'}</>
                     )}
                   </button>
                   <button
