@@ -43,6 +43,8 @@ except Exception as e:
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 import asyncio
 from datetime import datetime
@@ -489,4 +491,22 @@ async def analyze_chart(request_data: dict):
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+
+# ── Serve React frontend (must be LAST — catches all non-API routes) ──
+FRONTEND_BUILD = os.path.join(os.path.dirname(__file__), "..", "..", "frontend_build")
+
+if os.path.isdir(FRONTEND_BUILD):
+    # Serve static assets (JS, CSS, images)
+    app.mount("/static", StaticFiles(directory=os.path.join(FRONTEND_BUILD, "static")), name="static")
+
+    @app.get("/{full_path:path}")
+    async def serve_react(full_path: str):
+        """Catch-all: serve React index.html for all non-API paths (SPA routing)."""
+        index = os.path.join(FRONTEND_BUILD, "index.html")
+        if os.path.isfile(index):
+            return FileResponse(index)
+        return {"message": "Frontend not built"}
+else:
+    print(f"[INFO] Frontend build not found at {FRONTEND_BUILD} — API-only mode")
+
 
