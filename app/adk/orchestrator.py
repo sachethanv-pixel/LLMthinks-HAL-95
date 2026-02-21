@@ -101,26 +101,34 @@ class TradeSageOrchestrator:
         self.agents = self._initialize_agents()
         self.session_service = InMemorySessionService()
         self.response_handler = ADKResponseHandler()
+        self.cache = {}  # Simple in-memory cache: {hypothesis_text_hash: result}
         
-        print("✅ TradeSage ADK Orchestrator initialized (clean output version)")
+        print("✅ TradeSage ADK Orchestrator (High-Performance Parallel Engine) initialized")
         
     def _initialize_agents(self) -> Dict[str, Agent]:
         """Initialize all agents."""
-        try:
-            agents = {
-                "hypothesis": create_hypothesis_agent(),
-                "context": create_context_agent(),
-                "research": create_research_agent(),
-                "contradiction": create_contradiction_agent(),
-                "synthesis": create_synthesis_agent(),
-                "alert": create_alert_agent(),
-                "sentiment": create_sentiment_proxy_agent(),
-            }
-            print(f"✅ Initialized {len(agents)} agents")
-            return agents
-        except Exception as e:
-            print(f"❌ Error initializing agents: {str(e)}")
-            raise
+        agents = {}
+        agent_factories = {
+            "hypothesis": create_hypothesis_agent,
+            "context": create_context_agent,
+            "research": create_research_agent,
+            "contradiction": create_contradiction_agent,
+            "synthesis": create_synthesis_agent,
+            "alert": create_alert_agent,
+            "sentiment": create_sentiment_proxy_agent
+        }
+        
+        for name, factory in agent_factories.items():
+            try:
+                print(f"📡 Initializing {name} agent...")
+                agents[name] = factory()
+                print(f"✅ {name.capitalize()} agent initialized")
+            except Exception as e:
+                print(f"❌ Error initializing {name} agent: {str(e)}")
+                raise
+                
+        print(f"✅ All {len(agents)} agents initialized successfully")
+        return agents
     
     async def process_hypothesis(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process a trading hypothesis through the ADK agent workflow."""
@@ -135,35 +143,41 @@ class TradeSageOrchestrator:
                 "error": "No input text provided",
                 "method": "adk_orchestration"
             }
+
+        # Check cache
+        cache_key = hypothesis_text.lower()
+        if cache_key in self.cache:
+            print(f"🎯 Cache hit for: {hypothesis_text[:50]}...")
+            return self.cache[cache_key]
         
-        print(f"🚀 Starting ADK workflow for: {hypothesis_text[:100]}...")
+        print(f"🚀 Starting optimized ADK workflow for: {hypothesis_text[:100]}...")
+        start_time = asyncio.get_event_loop().time()
         
         try:
-            # Step 1: Process Hypothesis
-            print("🧠 Processing hypothesis...")
-            hypothesis_result = await self._run_agent_completely_silent("hypothesis", {
+            # Phase 1: Parallel Hypothesis Processing & Context Analysis
+            print("🧠 Processing hypothesis and context (Parallel)...")
+            hypothesis_task = self._run_agent_completely_silent("hypothesis", {
                 "hypothesis": hypothesis_text,
                 "mode": input_data.get("mode", "analyze")
             })
             
+            context_task = self._run_agent_completely_silent("context", {
+                "hypothesis": hypothesis_text
+            })
+            
+            hypothesis_result, context_result = await asyncio.gather(hypothesis_task, context_task)
+            
             processed_hypothesis = self._extract_response(hypothesis_result["final_text"])
             if not processed_hypothesis:
-                processed_hypothesis = hypothesis_text  # Fallback
-            
-            print(f"   ✅ Processed: {processed_hypothesis[:80]}...")
-            
-            # Step 2: Analyze Context  
-            print("🔍 Analyzing context...")
-            context_result = await self._run_agent_completely_silent("context", {
-                "hypothesis": processed_hypothesis
-            })
+                processed_hypothesis = hypothesis_text
             
             context = self._parse_json_response(context_result["final_text"])
             asset_info = context.get("asset_info", {})
-            print(f"   ✅ Asset identified: {asset_info.get('asset_name', 'Unknown')} ({asset_info.get('primary_symbol', 'N/A')})")
+            print(f"   ✅ Asset: {asset_info.get('primary_symbol', 'N/A')} | Hypothesis: {processed_hypothesis[:60]}...")
             
-            # Step 3: Conduct Research and Analyze Sentiment in Parallel
-            print("📊 Conducting research and analyzing sentiment (Parallel)...")
+            # Phase 2: Parallel Research, Sentiment, and Contradiction Detection
+            # Note: Contradiction agent has its own news_search tool, so it can run mostly in parallel
+            print("📊 Conducting research, sentiment, and risk analysis (Parallel)...")
             
             research_task = self._run_agent_completely_silent("research", {
                 "hypothesis": processed_hypothesis,
@@ -175,44 +189,34 @@ class TradeSageOrchestrator:
                 "context": context
             })
             
-            # Execute in parallel
-            research_result, sentiment_result = await asyncio.gather(research_task, sentiment_task)
+            contradiction_task = self._run_agent_completely_silent("contradiction", {
+                "hypothesis": processed_hypothesis,
+                "context": context
+            })
             
-            # Handle research response with tools
+            # Execute all three in parallel
+            research_result, sentiment_result, contradiction_result = await asyncio.gather(
+                research_task, sentiment_task, contradiction_task
+            )
+            
+            # Process results
             research_summary = self._extract_research_summary_from_tools(research_result)
-            tool_summary = self.response_handler.get_tool_summary(research_result)
-            
-            if tool_summary['tools_called'] > 0:
-                print(f"   ✅ Research completed with {tool_summary['tools_called']} tool calls")
-            else:
-                print(f"   ✅ Research completed: {len(research_summary)} chars")
-            
-            # Handle sentiment response
             sentiment_analysis = sentiment_result.get("final_text", "No sentiment data available")
-            print(f"   ✅ Sentiment analysis completed: {len(sentiment_analysis)} chars")
+            contradictions = self._parse_contradictions_response(contradiction_result["final_text"])
             
             research_data = {
                 "summary": research_summary,
                 "tool_results": research_result.get("tool_results", {}),
-                "method": "adk_research_with_tools",
+                "method": "adk_research_parallel",
                 "tools_used": research_result.get("function_calls", []),
                 "price": self._extract_price_from_tools(research_result),
                 "sentiment_proxy": sentiment_analysis
             }
             
-            # Step 4: Identify Contradictions
-            print("⚠️  Identifying contradictions...")
-            contradiction_result = await self._run_agent_completely_silent("contradiction", {
-                "hypothesis": processed_hypothesis,
-                "context": context,
-                "research_data": research_data
-            })
+            print(f"   ✅ Research/Sentiment/Risk complete")
             
-            contradictions = self._parse_contradictions_response(contradiction_result["final_text"])
-            print(f"   ✅ Found {len(contradictions)} contradictions")
-            
-            # Step 5: Synthesize Analysis
-            print("🔬 Synthesizing analysis...")
+            # Phase 3: Parallel Synthesis and Alerts (Alert agent can run once contradictions are known)
+            print("🔬 Synthesizing final analysis...")
             synthesis_result = await self._run_agent_completely_silent("synthesis", {
                 "hypothesis": processed_hypothesis,
                 "context": context,
@@ -223,9 +227,8 @@ class TradeSageOrchestrator:
             synthesis_data = self._parse_synthesis_response(synthesis_result["final_text"], contradictions)
             confirmations = synthesis_data.get("confirmations", [])
             confidence_score = synthesis_data.get("confidence_score", 0.5)
-            print(f"   ✅ Synthesis complete - Confidence: {confidence_score:.2f}")
             
-            # Step 6: Generate Alerts
+            # Step 6: Generate Alerts (Needs synthesis confidence)
             print("🚨 Generating alerts...")
             alert_result = await self._run_agent_completely_silent("alert", {
                 "hypothesis": processed_hypothesis,
@@ -238,7 +241,9 @@ class TradeSageOrchestrator:
             
             alerts_data = self._parse_alerts_response(alert_result["final_text"])
             alerts = alerts_data.get("alerts", [])
-            print(f"   ✅ Generated {len(alerts)} alerts")
+            
+            end_time = asyncio.get_event_loop().time()
+            processing_time = end_time - start_time
             
             # Compile final result
             result = {
@@ -252,9 +257,9 @@ class TradeSageOrchestrator:
                 "alerts": alerts,
                 "recommendations": alerts_data.get("recommendations", ""),
                 "confidence_score": confidence_score,
-                "method": "adk_clean_output",
+                "method": "adk_parallel_optimized",
                 "processing_stats": {
-                    "total_agents": len(self.agents),
+                    "processing_time_seconds": round(processing_time, 2),
                     "contradictions_found": len(contradictions),
                     "confirmations_found": len(confirmations),
                     "alerts_generated": len(alerts),
@@ -262,7 +267,7 @@ class TradeSageOrchestrator:
                 }
             }
             
-            print(f"✅ ADK workflow completed successfully")
+            print(f"✅ Workflow completed in {processing_time:.2f}s")
             
             # Add metadata for main.py compatibility
             result["metadata"] = {
@@ -270,6 +275,10 @@ class TradeSageOrchestrator:
                 "price": research_data.get("price", 0)
             }
             
+            # Cache result (save top 50 to avoid memory growth)
+            if len(self.cache) < 50:
+                self.cache[cache_key] = result
+                
             return result
             
         except Exception as e:
@@ -1064,7 +1073,7 @@ Provide specific, actionable alerts with clear priorities and investment recomme
 # Global orchestrator instance
 try:
     orchestrator = TradeSageOrchestrator()
-    print("🚀 TradeSage ADK Orchestrator (Clean Output Version) ready")
+    print("🚀 TradeSage ADK Orchestrator (High-Performance Parallel Engine) ready")
 except Exception as e:
     print(f"❌ Failed to initialize TradeSage Orchestrator: {str(e)}")
     orchestrator = None
