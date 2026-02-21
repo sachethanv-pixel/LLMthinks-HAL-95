@@ -1,5 +1,6 @@
 #!/bin/bash
 # quick_deploy.sh
+#os
 
 PROJECT_ID=${PROJECT_ID:-"tradesage-mvp"}
 REGION=${REGION:-"us-central1"}
