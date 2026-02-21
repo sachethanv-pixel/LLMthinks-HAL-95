@@ -121,6 +121,23 @@ class TradeSageAPI {
     }
   }
 
+  async analyzeChart(imageData, mimeType = 'image/png') {
+    try {
+      const response = await fetch(`${API_BASE_URL}/analyze-chart`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image: imageData, mime_type: mimeType }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      return await response.json();
+    } catch (error) {
+      console.error('Error analyzing chart:', error);
+      throw error;
+    }
+  }
+
   async healthCheck() {
     try {
       const response = await fetch(`${API_BASE_URL}/health`);

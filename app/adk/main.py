@@ -372,7 +372,113 @@ async def chat_with_agent(request_data: dict):
     except Exception as e:
         print(f"❌ Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+CHART_ANALYSIS_PROMPT = """You are a professional quantitative analyst specializing in technical chart analysis. 
+Analyze this financial chart image with precision and mathematical depth.
+
+OUTPUT FORMAT — STRICT:
+Plain text only. No markdown. No asterisks (*). No bullet dashes (-). No pound signs (#).
+Use numbered sections. Use labeled fields like "Support:" or "RSI estimate:" inline.
+Never write filler like "Great chart!" or "Let's see what we have here."
+Never end with soft commentary.
+
+REQUIRED SECTIONS — include ALL of these:
+
+1. CHART TYPE AND TIMEFRAME
+State what type of chart this is (candlestick/line/bar), the visible timeframe (intraday/daily/weekly), and approximate date range if visible.
+
+2. PRICE ACTION SUMMARY
+State the current visible price range: High: [X], Low: [X], Last visible close: [X].
+Describe the overall trend direction clearly: Uptrend / Downtrend / Sideways consolidation.
+Quantify: "Price has moved approximately [X]% over the visible period."
+
+3. KEY PRICE LEVELS
+Support: [level] — reason derived from chart (e.g., prior swing low, high-volume zone)
+Resistance: [level] — reason
+If multiple levels identified, list them as: S1: [X], S2: [X], R1: [X], R2: [X]
+
+4. TECHNICAL INDICATORS (read from chart or estimate from price action)
+Moving Averages: State any visible MAs, their approximate values, and whether price is above or below.
+If no MAs visible, estimate: "No MA overlay visible; based on price action, estimated MA20 ≈ [X]"
+Volume: State if volume is increasing/decreasing/diverging from price.
+RSI estimate: If RSI panel visible, state value. If not: "RSI panel not visible; momentum appears [overbought/oversold/neutral] based on price action slope."
+MACD or other indicators: state if visible.
+
+5. PATTERN IDENTIFICATION
+Name any classical patterns visible: Head and Shoulders, Double Top/Bottom, Cup and Handle, Flags, Wedges, Triangles, Engulfing candles, Doji, Hammer, etc.
+For each: "Pattern: [name] | Breakout target: [price] | Pattern height: [X units] | Probability: [estimate]%"
+
+6. SHORT-TERM PREDICTION (next 1-5 sessions based on visible timeframe)
+State a directional bias: Bullish / Bearish / Neutral with a confidence level (e.g., 65% confidence bearish).
+Entry zone: [price range]
+Target 1: [price] ([X]% move)
+Target 2: [price] ([X]% move)  
+Stop loss: [price] — invalidation level
+Risk/Reward ratio: [X:1]
+
+7. RISK ASSESSMENT
+Primary risk: [what would invalidate the analysis]
+Volatility assessment: Low / Medium / High — based on candle body sizes relative to wicks.
+
+Be precise. If the chart is unclear or low resolution, state what you can and cannot determine."""
+
+@app.post("/analyze-chart")
+async def analyze_chart(request_data: dict):
+    """Analyze a financial chart image using Gemini Vision."""
+    try:
+        import google.generativeai as genai
+        import base64
         
+        image_data = request_data.get("image")
+        mime_type = request_data.get("mime_type", "image/png")
+        
+        if not image_data:
+            raise HTTPException(status_code=400, detail="Missing image data")
+        
+        # Strip data URI prefix if present
+        if "," in image_data:
+            image_data = image_data.split(",", 1)[1]
+        
+        # Configure Gemini
+        project_id = os.getenv("PROJECT_ID", "sdr-agent-486508")
+        location = os.getenv("REGION", "us-central1")
+        
+        use_vertex = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "False").lower() == "true"
+        
+        if use_vertex:
+            import vertexai
+            from vertexai.generative_models import GenerativeModel, Part, Image as VertexImage
+            vertexai.init(project=project_id, location=location)
+            model = GenerativeModel("gemini-2.0-flash")
+            image_bytes = base64.b64decode(image_data)
+            image_part = Part.from_data(data=image_bytes, mime_type=mime_type)
+            response = model.generate_content([CHART_ANALYSIS_PROMPT, image_part])
+            analysis_text = response.text
+        else:
+            genai.configure(api_key=os.getenv("GEMINI_API_KEY", ""))
+            model = genai.GenerativeModel("gemini-2.0-flash")
+            image_bytes = base64.b64decode(image_data)
+            image_part = {"mime_type": mime_type, "data": image_bytes}
+            response = model.generate_content([CHART_ANALYSIS_PROMPT, image_part])
+            analysis_text = response.text
+        
+        print(f"✅ Chart analysis complete ({len(analysis_text)} chars)")
+        
+        return {
+            "status": "success",
+            "analysis": analysis_text,
+            "model": "gemini-2.0-flash-vision"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Chart analysis error: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Chart analysis failed: {str(e)}")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
+

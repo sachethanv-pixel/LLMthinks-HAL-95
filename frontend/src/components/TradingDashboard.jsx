@@ -33,6 +33,19 @@ const TradingDashboard = () => {
   const stockChatEndRef = React.useRef(null);
   const stockInputRef = React.useRef(null);
 
+  // Expand/collapse for contradictions & confirmations
+  const [showAllContradictions, setShowAllContradictions] = useState(false);
+  const [showAllConfirmations, setShowAllConfirmations] = useState(false);
+
+  // Chart Vision state
+  const [chartImage, setChartImage] = useState(null);       // base64 string
+  const [chartImageUrl, setChartImageUrl] = useState(null); // object URL for preview
+  const [chartMime, setChartMime] = useState('image/png');
+  const [chartAnalysis, setChartAnalysis] = useState(null);
+  const [isChartLoading, setIsChartLoading] = useState(false);
+  const [chartError, setChartError] = useState(null);
+  const chartDropRef = React.useRef(null);
+
   const SUGGESTED_PROMPTS = [
     '📈 What is the current outlook for NVDA?',
     '🏦 Analyze AAPL fundamentals',
@@ -498,6 +511,21 @@ const TradingDashboard = () => {
                       Market Trends
                     </span>
                   </button>
+                  <button
+                    className={`px-8 py-4 text-sm font-semibold transition-all relative ${activeTab === 'chartvision'
+                      ? 'text-violet-600 bg-violet-50 border-b-2 border-violet-600'
+                      : 'text-gray-500 hover:text-gray-700 hover:bg-gray-50'
+                      }`}
+                    onClick={() => setActiveTab('chartvision')}
+                  >
+                    <span className="flex items-center">
+                      <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      Chart Vision
+                      <span className="ml-2 text-[10px] font-bold px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full">AI</span>
+                    </span>
+                  </button>
                 </nav>
               </div>
 
@@ -514,9 +542,8 @@ const TradingDashboard = () => {
                         Contradictions ({selectedHypothesis.contradictions})
                       </h3>
                       <div className="space-y-4 max-h-96 overflow-y-auto">
-                        {selectedHypothesis.contradictions_detail?.slice(0, 5).map((item, index) => (
+                        {selectedHypothesis.contradictions_detail?.slice(0, showAllContradictions ? undefined : 5).map((item, index) => (
                           <div key={index} className="bg-white rounded-xl p-4 border-l-4 border-red-500 shadow-sm hover:shadow-md transition-shadow">
-                            {/* Display full quote without truncation */}
                             <p className="text-gray-800 mb-3 text-sm leading-relaxed font-medium">
                               <span dangerouslySetInnerHTML={{ __html: `"${cleanMarkdownText(item.quote)}"` }} />
                             </p>
@@ -535,10 +562,15 @@ const TradingDashboard = () => {
                             </div>
                           </div>
                         ))}
-                        {selectedHypothesis.contradictions > 5 && (
-                          <div className="text-center text-red-600 text-sm font-semibold py-3 bg-red-100 rounded-lg">
-                            + {selectedHypothesis.contradictions - 5} more contradictions
-                          </div>
+                        {selectedHypothesis.contradictions_detail?.length > 5 && (
+                          <button
+                            onClick={() => setShowAllContradictions(prev => !prev)}
+                            className="w-full text-center text-red-600 text-sm font-semibold py-3 bg-red-100 hover:bg-red-200 rounded-lg transition-colors cursor-pointer"
+                          >
+                            {showAllContradictions
+                              ? '▲ Show less'
+                              : `+ ${selectedHypothesis.contradictions_detail.length - 5} more contradictions — click to expand`}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -552,7 +584,7 @@ const TradingDashboard = () => {
                         Confirmations ({selectedHypothesis.confirmations})
                       </h3>
                       <div className="space-y-4 max-h-96 overflow-y-auto">
-                        {selectedHypothesis.confirmations_detail?.slice(0, 5).map((item, index) => (
+                        {selectedHypothesis.confirmations_detail?.slice(0, showAllConfirmations ? undefined : 5).map((item, index) => (
                           <div key={index} className="bg-white rounded-xl p-4 border-l-4 border-green-500 shadow-sm hover:shadow-md transition-shadow">
                             <p className="text-gray-800 mb-3 text-sm leading-relaxed font-medium">
                               <span dangerouslySetInnerHTML={{ __html: `"${cleanMarkdownText(extractQuoteAndReason(item.quote).quote)}"` }} />
@@ -572,12 +604,173 @@ const TradingDashboard = () => {
                             </div>
                           </div>
                         ))}
-                        {selectedHypothesis.confirmations > 5 && (
-                          <div className="text-center text-green-600 text-sm font-semibold py-3 bg-green-100 rounded-lg">
-                            + {selectedHypothesis.confirmations - 5} more confirmations
+                        {selectedHypothesis.confirmations_detail?.length > 5 && (
+                          <button
+                            onClick={() => setShowAllConfirmations(prev => !prev)}
+                            className="w-full text-center text-green-600 text-sm font-semibold py-3 bg-green-100 hover:bg-green-200 rounded-lg transition-colors cursor-pointer"
+                          >
+                            {showAllConfirmations
+                              ? '▲ Show less'
+                              : `+ ${selectedHypothesis.confirmations_detail.length - 5} more confirmations — click to expand`}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : activeTab === 'chartvision' ? (
+                  /* ── Chart Vision Analysis ── */
+                  <div className="flex flex-col gap-6">
+
+                    {/* Header banner */}
+                    <div className="bg-gradient-to-r from-violet-600 to-indigo-700 rounded-2xl p-6 text-white flex items-center gap-5">
+                      <div className="w-14 h-14 bg-white bg-opacity-20 rounded-2xl flex items-center justify-center flex-shrink-0">
+                        <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                      </div>
+                      <div>
+                        <div className="text-xl font-bold">Chart Vision Analysis</div>
+                        <div className="text-violet-100 text-sm mt-1">Upload any stock chart screenshot — Gemini Vision identifies patterns, price levels, and short-term predictions with mathematical precision.</div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                      {/* Upload panel */}
+                      <div className="flex flex-col gap-4">
+                        <div
+                          ref={chartDropRef}
+                          onDragOver={e => e.preventDefault()}
+                          onDrop={e => {
+                            e.preventDefault();
+                            const file = e.dataTransfer.files[0];
+                            if (!file) return;
+                            setChartMime(file.type);
+                            setChartImageUrl(URL.createObjectURL(file));
+                            setChartAnalysis(null); setChartError(null);
+                            const reader = new FileReader();
+                            reader.onload = ev => setChartImage(ev.target.result);
+                            reader.readAsDataURL(file);
+                          }}
+                          className="border-2 border-dashed border-violet-300 rounded-2xl p-6 text-center bg-violet-50 hover:bg-violet-100 transition-colors cursor-pointer"
+                          onClick={() => document.getElementById('chart-file-input').click()}
+                        >
+                          {chartImageUrl ? (
+                            <img src={chartImageUrl} alt="Chart preview" className="max-h-64 mx-auto rounded-xl object-contain" />
+                          ) : (
+                            <div className="py-8">
+                              <div className="w-16 h-16 mx-auto mb-4 bg-violet-200 rounded-2xl flex items-center justify-center">
+                                <svg className="w-8 h-8 text-violet-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                                </svg>
+                              </div>
+                              <p className="font-semibold text-violet-700 text-sm">Drop chart image here or click to upload</p>
+                              <p className="text-xs text-gray-400 mt-1">PNG, JPG, WEBP — any stock chart screenshot</p>
+                            </div>
+                          )}
+                          <input
+                            id="chart-file-input"
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={e => {
+                              const file = e.target.files[0];
+                              if (!file) return;
+                              setChartMime(file.type);
+                              setChartImageUrl(URL.createObjectURL(file));
+                              setChartAnalysis(null); setChartError(null);
+                              const reader = new FileReader();
+                              reader.onload = ev => setChartImage(ev.target.result);
+                              reader.readAsDataURL(file);
+                            }}
+                          />
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex gap-3">
+                          <button
+                            disabled={!chartImage || isChartLoading}
+                            onClick={async () => {
+                              setIsChartLoading(true);
+                              setChartAnalysis(null); setChartError(null);
+                              try {
+                                const res = await TradeSageAPI.analyzeChart(chartImage, chartMime);
+                                if (res.status === 'success') setChartAnalysis(res.analysis);
+                                else setChartError('Analysis failed. Please try again.');
+                              } catch (err) {
+                                setChartError(`Error: ${err.message}`);
+                              } finally {
+                                setIsChartLoading(false);
+                              }
+                            }}
+                            className="flex-1 bg-gradient-to-r from-violet-600 to-indigo-600 text-white py-3 rounded-xl font-semibold hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                          >
+                            {isChartLoading ? (
+                              <>
+                                <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" className="opacity-25"></circle>
+                                  <path fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" className="opacity-75"></path>
+                                </svg>
+                                Analyzing with Gemini Vision...
+                              </>
+                            ) : '🔭 Analyze Chart'}
+                          </button>
+                          {chartImageUrl && (
+                            <button
+                              onClick={() => { setChartImage(null); setChartImageUrl(null); setChartAnalysis(null); setChartError(null); }}
+                              className="px-4 py-3 rounded-xl bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors font-semibold text-sm"
+                            >
+                              Clear
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Tips box */}
+                        <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4">
+                          <div className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">Tips for best results</div>
+                          <div className="text-xs text-indigo-600 space-y-1">
+                            <div>Use high-resolution chart screenshots</div>
+                            <div>Include RSI, MACD, Volume panels if available</div>
+                            <div>Works with TradingView, Thinkorswim, Yahoo Finance</div>
+                            <div>Candlestick charts give more precise pattern analysis</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Analysis output — dark terminal style */}
+                      <div className="bg-gray-900 rounded-2xl p-6 min-h-96 overflow-y-auto" style={{ maxHeight: '520px' }}>
+                        {isChartLoading ? (
+                          <div className="flex flex-col items-center justify-center h-64 gap-4">
+                            <div className="relative">
+                              <div className="w-14 h-14 border-4 border-violet-500 border-t-transparent rounded-full animate-spin"></div>
+                              <div className="w-10 h-10 border-4 border-indigo-400 border-t-transparent rounded-full animate-spin absolute top-2 left-2" style={{ animationDirection: 'reverse', animationDuration: '0.7s' }}></div>
+                            </div>
+                            <div className="text-violet-300 text-sm font-medium">Gemini Vision is reading your chart...</div>
+                            <div className="text-gray-500 text-xs">Identifying patterns, levels and indicators</div>
+                          </div>
+                        ) : chartError ? (
+                          <div className="text-red-400 text-sm p-4 bg-red-900 bg-opacity-30 rounded-xl">{chartError}</div>
+                        ) : chartAnalysis ? (
+                          <div>
+                            <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-700">
+                              <div className="w-2 h-2 rounded-full bg-violet-400 animate-pulse"></div>
+                              <span className="text-violet-400 text-xs font-semibold uppercase tracking-wide">Gemini Vision · Technical Analysis</span>
+                            </div>
+                            <pre className="text-gray-100 text-xs leading-relaxed font-mono whitespace-pre-wrap">{chartAnalysis}</pre>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-64 gap-3 text-center">
+                            <div className="w-12 h-12 bg-gray-800 rounded-xl flex items-center justify-center">
+                              <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <p className="text-gray-400 text-sm font-medium">Awaiting chart upload</p>
+                            <p className="text-gray-600 text-xs max-w-xs">Analysis covers patterns, key price levels, indicators, short-term prediction with R/R ratio, and risk assessment</p>
                           </div>
                         )}
                       </div>
+
                     </div>
                   </div>
                 ) : (
@@ -761,10 +954,10 @@ const TradingDashboard = () => {
                       <label
                         key={mode.value}
                         className={`relative cursor-pointer rounded-xl border-2 p-4 transition-all ${formData.mode === mode.value
-                            ? mode.value === 'generate'
-                              ? 'border-emerald-500 bg-emerald-50'
-                              : 'border-blue-500 bg-blue-50'
-                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                          ? mode.value === 'generate'
+                            ? 'border-emerald-500 bg-emerald-50'
+                            : 'border-blue-500 bg-blue-50'
+                          : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
                           }`}
                       >
                         <input
@@ -888,8 +1081,8 @@ const TradingDashboard = () => {
                     type="submit"
                     disabled={isSubmitting}
                     className={`flex-1 text-white py-4 rounded-xl hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold text-lg ${formData.mode === 'generate'
-                        ? 'bg-gradient-to-r from-emerald-600 to-teal-600'
-                        : 'bg-gradient-to-r from-blue-600 to-purple-600'
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600'
+                      : 'bg-gradient-to-r from-blue-600 to-purple-600'
                       }`}
                   >
                     {isSubmitting ? (
