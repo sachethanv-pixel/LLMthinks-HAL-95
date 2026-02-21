@@ -87,6 +87,10 @@ async def log_requests(request, call_next):
 
 @app.get("/")
 async def root():
+    """Serve React app if built, otherwise return API info."""
+    index_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend_build", "index.html")
+    if os.path.isfile(index_path):
+        return FileResponse(index_path)
     return {"message": "TradeSage AI - Google ADK v1.0.0 Implementation"}
 
 @app.get("/health")
