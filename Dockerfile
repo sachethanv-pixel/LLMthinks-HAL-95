@@ -1,6 +1,6 @@
 # Dockerfile — Full Stack (React frontend + FastAPI backend) on Cloud Run
 # Stage 1: Build React frontend
-FROM node:20-slim AS frontend-builder
+FROM node:18-slim AS frontend-builder
 
 WORKDIR /frontend
 COPY frontend/package*.json ./
