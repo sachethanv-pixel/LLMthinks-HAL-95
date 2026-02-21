@@ -1,19 +1,6 @@
-# Dockerfile — Full Stack (React frontend + FastAPI backend) on Cloud Run
-# Stage 1: Build React frontend
-FROM node:18-slim AS frontend-builder
+# Dockerfile — Full Stack (pre-built React + FastAPI) on Cloud Run
+# React is built locally before pushing. Docker just copies the build output.
 
-WORKDIR /frontend
-COPY frontend/package.json ./
-# Fresh install — overrides in package.json force ajv@^8 and ajv-keywords@^5
-RUN npm install --silent && \
-    npm install ajv@^8.0.0 ajv-keywords@^5.0.0 --save-dev --silent
-COPY frontend/ ./
-
-# Build with the production API URL pointing to same Cloud Run service
-ENV REACT_APP_API_URL=https://tradesage-ai-85008682519.us-central1.run.app
-RUN npm run build
-
-# Stage 2: Python backend
 FROM python:3.11.2-slim
 
 WORKDIR /app
@@ -31,8 +18,14 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
 # Copy backend code
 COPY . .
 
-# Copy built React app into the backend's static directory
-COPY --from=frontend-builder /frontend/build /app/frontend_build
+# Copy pre-built React app into the static serving location
+# (build/ is committed to git so Docker can simply copy it)
+RUN if [ -d "frontend/build" ]; then \
+    cp -r frontend/build frontend_build; \
+    echo "Frontend build found and copied"; \
+    else \
+    echo "WARNING: frontend/build not found — API-only mode"; \
+    fi
 
 ENV PYTHONPATH=/app
 ENV PORT=8080
