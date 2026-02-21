@@ -4,7 +4,7 @@ FROM node:20-slim AS frontend-builder
 
 WORKDIR /frontend
 COPY frontend/package*.json ./
-RUN npm ci --silent
+RUN npm install --legacy-peer-deps --silent
 COPY frontend/ ./
 
 # Build with the production API URL pointing to same Cloud Run service
