@@ -31,6 +31,10 @@
       "react-app/jest"
     ]
   },
+  "overrides": {
+    "ajv": "^8.0.0",
+    "ajv-keywords": "^5.0.0"
+  },
   "browserslist": {
     "production": [
       ">0.2%",
