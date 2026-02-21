@@ -25,8 +25,8 @@ class HypothesisCRUD:
     
     @staticmethod
     def get_hypotheses(db: Session, skip: int = 0, limit: int = 100) -> List[TradingHypothesis]:
-        """Get all hypotheses with pagination."""
-        return db.query(TradingHypothesis).offset(skip).limit(limit).all()
+        """Get all hypotheses with pagination, newest first."""
+        return db.query(TradingHypothesis).order_by(desc(TradingHypothesis.created_at)).offset(skip).limit(limit).all()
     
     @staticmethod
     def update_hypothesis(db: Session, hypothesis_id: int, update_data: Dict[str, Any]) -> Optional[TradingHypothesis]:
@@ -170,7 +170,7 @@ class DashboardCRUD:
         if hypothesis.instruments:
             # Assuming first instrument for trend
             symbol = hypothesis.instruments[0] if isinstance(hypothesis.instruments, list) else hypothesis.instruments.get('primary')
-            price_history = PriceHistoryCRUD.get_price_history(db, hypothesis_id, symbol, days=7)
+            price_history = PriceHistoryCRUD.get_price_history(db, hypothesis_id, symbol, days=30)
         else:
             price_history = []
         

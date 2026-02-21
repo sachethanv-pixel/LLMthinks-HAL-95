@@ -58,6 +58,7 @@ from app.adk.agents.research_agent import create_research_agent
 from app.adk.agents.contradiction_agent import create_contradiction_agent
 from app.adk.agents.synthesis_agent import create_synthesis_agent
 from app.adk.agents.alert_agent import create_alert_agent
+from app.adk.agents.sentiment_proxy_agent import create_sentiment_proxy_agent
 from app.adk.response_handler import ADKResponseHandler
 from app.config.adk_config import ADK_CONFIG
 
@@ -113,6 +114,7 @@ class TradeSageOrchestrator:
                 "contradiction": create_contradiction_agent(),
                 "synthesis": create_synthesis_agent(),
                 "alert": create_alert_agent(),
+                "sentiment": create_sentiment_proxy_agent(),
             }
             print(f"✅ Initialized {len(agents)} agents")
             return agents
@@ -123,11 +125,14 @@ class TradeSageOrchestrator:
     async def process_hypothesis(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Process a trading hypothesis through the ADK agent workflow."""
         
-        hypothesis_text = input_data.get("hypothesis", "").strip()
+        hypothesis_text = (input_data.get("hypothesis") or 
+                           input_data.get("idea") or 
+                           input_data.get("context") or "").strip()
+        
         if not hypothesis_text:
             return {
                 "status": "error",
-                "error": "No hypothesis provided",
+                "error": "No input text provided",
                 "method": "adk_orchestration"
             }
         
@@ -157,12 +162,21 @@ class TradeSageOrchestrator:
             asset_info = context.get("asset_info", {})
             print(f"   ✅ Asset identified: {asset_info.get('asset_name', 'Unknown')} ({asset_info.get('primary_symbol', 'N/A')})")
             
-            # Step 3: Conduct Research
-            print("📊 Conducting research...")
-            research_result = await self._run_agent_completely_silent("research", {
+            # Step 3: Conduct Research and Analyze Sentiment in Parallel
+            print("📊 Conducting research and analyzing sentiment (Parallel)...")
+            
+            research_task = self._run_agent_completely_silent("research", {
                 "hypothesis": processed_hypothesis,
                 "context": context
             })
+            
+            sentiment_task = self._run_agent_completely_silent("sentiment", {
+                "hypothesis": processed_hypothesis,
+                "context": context
+            })
+            
+            # Execute in parallel
+            research_result, sentiment_result = await asyncio.gather(research_task, sentiment_task)
             
             # Handle research response with tools
             research_summary = self._extract_research_summary_from_tools(research_result)
@@ -170,15 +184,20 @@ class TradeSageOrchestrator:
             
             if tool_summary['tools_called'] > 0:
                 print(f"   ✅ Research completed with {tool_summary['tools_called']} tool calls")
-                print(f"   🔧 Tools used: {', '.join(tool_summary['tool_names'])}")
             else:
                 print(f"   ✅ Research completed: {len(research_summary)} chars")
+            
+            # Handle sentiment response
+            sentiment_analysis = sentiment_result.get("final_text", "No sentiment data available")
+            print(f"   ✅ Sentiment analysis completed: {len(sentiment_analysis)} chars")
             
             research_data = {
                 "summary": research_summary,
                 "tool_results": research_result.get("tool_results", {}),
                 "method": "adk_research_with_tools",
-                "tools_used": research_result.get("function_calls", [])
+                "tools_used": research_result.get("function_calls", []),
+                "price": self._extract_price_from_tools(research_result),
+                "sentiment_proxy": sentiment_analysis
             }
             
             # Step 4: Identify Contradictions
@@ -244,6 +263,13 @@ class TradeSageOrchestrator:
             }
             
             print(f"✅ ADK workflow completed successfully")
+            
+            # Add metadata for main.py compatibility
+            result["metadata"] = {
+                "asset": asset_info.get("primary_symbol", "N/A"),
+                "price": research_data.get("price", 0)
+            }
+            
             return result
             
         except Exception as e:
@@ -254,12 +280,18 @@ class TradeSageOrchestrator:
                 "status": "error",
                 "error": str(e),
                 "method": "adk_clean_output",
-                "partial_data": {
-                    "hypothesis": hypothesis_text,
-                    "processed_hypothesis": locals().get("processed_hypothesis", ""),
-                    "context": locals().get("context", {}),
-                }
+                "partial_data": {}
             }
+            
+    def _extract_price_from_tools(self, research_result: Dict[str, Any]) -> float:
+        """Extract the current price from market_data_search tool results."""
+        tool_results = research_result.get("tool_results", {})
+        for tool_name, result in tool_results.items():
+            if "market_data_search" in tool_name:
+                if isinstance(result, dict) and "data" in result:
+                    info = result["data"].get("data", {}).get("info", {})
+                    return info.get("currentPrice", 0)
+        return 0
 
     async def _run_agent_completely_silent(self, agent_name: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
         """Run agent with COMPLETE warning suppression."""

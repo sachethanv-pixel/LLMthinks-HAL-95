@@ -4,7 +4,7 @@ from typing import Dict, Any
 
 # ADK Configuration
 ADK_CONFIG = {
-    "project_id": os.getenv("PROJECT_ID", "tradesage-mvp"),
+    "project_id": os.getenv("PROJECT_ID", "sdr-agent-486508"),
     "location": os.getenv("REGION", "us-central1"),
     "model": "gemini-2.0-flash",
     "use_vertex_ai": True,
@@ -47,5 +47,11 @@ AGENT_CONFIGS = {
         "description": "Generates actionable alerts and recommendations",
         "model": "gemini-2.0-flash",
         "temperature": 0.1,
+    },
+    "sentiment_proxy_agent": {
+        "name": "sentiment_analyst",
+        "description": "Analyzes retail sentiment vs institutional 'Smart Money' flows",
+        "model": "gemini-2.0-flash",
+        "temperature": 0.3,
     }
 }

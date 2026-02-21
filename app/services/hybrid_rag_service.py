@@ -8,12 +8,12 @@ import vertexai
 from vertexai.language_models import TextEmbeddingModel
 
 # Configuration
-PROJECT_ID = "tradesage-mvp"
-REGION = "us-central1"
-INSTANCE_NAME = "agentic-db"
-DATABASE_NAME = "tradesage_db"
-DB_USER = "postgres"
-DB_PASSWORD = os.getenv("DB_PASSWORD", "your-secure-password")
+PROJECT_ID = os.getenv("PROJECT_ID", "sdr-agent-486508")
+REGION = os.getenv("REGION", "us-central1")
+INSTANCE_NAME = os.getenv("INSTANCE_NAME", "agentic-db")
+DATABASE_NAME = os.getenv("DATABASE_NAME", "tradesage_db")
+DB_USER = os.getenv("DB_USER", "sachet_dev")
+DB_PASSWORD = os.getenv("DB_PASSWORD", "sachet_pass")
 
 class HybridRAGService:
     """

@@ -1,6 +1,6 @@
 from app.services.market_data_service import get_market_data
 
-def market_data_tool(instrument, source="auto", project_id="tradesage-mvp"):
+def market_data_tool(instrument, source="auto", project_id="sdr-agent-486508"):
     """
     Tool for retrieving market data with fallbacks and mock data
     

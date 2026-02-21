@@ -3,7 +3,11 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.database.models import Base
 import os
+from dotenv import load_dotenv
 from google.cloud.sql.connector import Connector
+
+# Load environment variables
+load_dotenv()
 
 # Cloud SQL Configuration
 PROJECT_ID = os.getenv("PROJECT_ID", "tradesage-mvp")
@@ -12,38 +16,56 @@ INSTANCE_NAME = os.getenv("INSTANCE_NAME", "agentic-db")
 DATABASE_NAME = os.getenv("DATABASE_NAME", "tradesage_db")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")  # New: for local connection
+DB_PORT = os.getenv("DB_PORT", "5432")  # New: for local connection
 
-def create_cloud_sql_engine():
-    """Create engine for Cloud SQL PostgreSQL"""
+def create_db_engine():
+    """Create engine for either Cloud SQL or Local PostgreSQL"""
     if not DB_PASSWORD:
-        raise ValueError("DB_PASSWORD environment variable must be set for Cloud SQL connection")
-      
-    connector = Connector()
-    
-    def getconn():
-        return connector.connect(
-            f"{PROJECT_ID}:{REGION}:{INSTANCE_NAME}",
-            "pg8000",
-            user=DB_USER,
-            password=DB_PASSWORD,
-            db=DATABASE_NAME
-        )
-    
-    # Create engine with Cloud SQL connector
-    engine = create_engine(
-        "postgresql+pg8000://",
-        creator=getconn,
-        pool_pre_ping=True,
-        pool_recycle=300,
-        echo=False  # Set to True for SQL debugging
-    )
-    
-    return engine, connector
+        raise ValueError("DB_PASSWORD environment variable must be set")
 
-# Create the Cloud SQL engine
-print("🐘 Connecting to Cloud SQL PostgreSQL...")
-engine, connector = create_cloud_sql_engine()
-print("✅ Cloud SQL connection established")
+    # Option 1: Local / Direct Connection (if DB_HOST is provided)
+    if DB_HOST:
+        print(f"🏠 Connecting to Local/Direct PostgreSQL at {DB_HOST}:{DB_PORT}...")
+        connection_url = f"postgresql+pg8000://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DATABASE_NAME}"
+        engine = create_engine(
+            connection_url,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            echo=False
+        )
+        return engine, None
+
+    # Option 2: Cloud SQL Connector
+    print("🐘 Connecting to Cloud SQL PostgreSQL via Connector...")
+    try:
+        connector = Connector()
+        
+        def getconn():
+            return connector.connect(
+                f"{PROJECT_ID}:{REGION}:{INSTANCE_NAME}",
+                "pg8000",
+                user=DB_USER,
+                password=DB_PASSWORD,
+                db=DATABASE_NAME
+            )
+        
+        engine = create_engine(
+            "postgresql+pg8000://",
+            creator=getconn,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            echo=False
+        )
+        return engine, connector
+    except Exception as e:
+        print(f"❌ Failed to initialize Cloud SQL Connector: {e}")
+        print("💡 TIP: If you are running locally without GCP credentials, set DB_HOST and DB_PORT in your .env file.")
+        raise
+
+# Create the engine
+engine, connector = create_db_engine()
+print("✅ Database engine created")
 
 # Create session maker
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -1,16 +1,40 @@
 # app/adk/main.py - Updated with minor fixes
+import os
+from dotenv import load_dotenv
+
+# Load environment variables BEFORE any other app imports
+load_dotenv(override=True)
+
+# CRITICAL: Clear stale GCP credentials path if it doesn't exist
+# This prevenets "File not found" errors from previous projects
+gcp_creds = os.getenv("GOOGLE_APPLICATION_CREDENTIALS")
+if gcp_creds and not os.path.exists(gcp_creds):
+    print(f"🧹 Clearing invalid GOOGLE_APPLICATION_CREDENTIALS path: {gcp_creds}")
+    os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 import asyncio
-import os 
 from datetime import datetime
 from typing import Dict, Any
+import re
 
 from app.adk.orchestrator import orchestrator
 from app.database.database import get_db
-from app.database.crud import HypothesisCRUD, ContradictionCRUD, ConfirmationCRUD, AlertCRUD, DashboardCRUD
+from app.database.crud import HypothesisCRUD, ContradictionCRUD, ConfirmationCRUD, AlertCRUD, DashboardCRUD, PriceHistoryCRUD
 from app.utils.text_processor import ResponseProcessor
+
+def _extract_target_price(thesis: str) -> float:
+    """Simple regex to extract target price from thesis statement."""
+    # Look for $ followed by numbers
+    match = re.search(r'\$(\d+(?:\.\d+)?)', thesis)
+    if match:
+        try:
+            return float(match.group(1))
+        except:
+            pass
+    return 0
 
 app = FastAPI(title="TradeSage AI - ADK Version", version="2.0.0")
 
@@ -35,12 +59,12 @@ async def process_hypothesis_adk(request_data: dict, db: Session = Depends(get_d
     """Process trading hypothesis using ADK agents."""
     
     try:
-        # Extract input
-        hypothesis = request_data.get("hypothesis", "")
+        # Extract input (handle different modes from frontend)
+        hypothesis = request_data.get("hypothesis") or request_data.get("idea") or request_data.get("context") or ""
         mode = request_data.get("mode", "analyze")
         
         if not hypothesis:
-            raise HTTPException(status_code=400, detail="Missing hypothesis")
+            raise HTTPException(status_code=400, detail="No input text provided (hypothesis, idea, or context)")
         
         print(f"🚀 Processing with ADK: {hypothesis}")
         
@@ -58,7 +82,13 @@ async def process_hypothesis_adk(request_data: dict, db: Session = Depends(get_d
             result.get("processed_hypothesis", hypothesis)
         )
         
-        # Create hypothesis in database
+        # Extract instruments from context
+        instruments = result.get("context", {}).get("asset_info", {}).get("primary_symbol")
+        if not instruments:
+            instruments = ["SPY"]
+        elif isinstance(instruments, str):
+            instruments = [instruments]
+            
         hypothesis_data = {
             "title": clean_title,
             "description": hypothesis,
@@ -66,10 +96,42 @@ async def process_hypothesis_adk(request_data: dict, db: Session = Depends(get_d
             "confidence_score": result.get("confidence_score", 0.5),
             "status": "active",
             "created_at": datetime.utcnow(),
-            "instruments": ["SPY"]  # Extract from context in production
+            "instruments": instruments,
+            "current_price": result.get("metadata", {}).get("price", 0),
+            "target_price": _extract_target_price(result.get("processed_hypothesis", ""))
         }
         
         db_hypothesis = HypothesisCRUD.create_hypothesis(db, hypothesis_data)
+        
+        # Save price history for trend charts
+        tool_results = result.get("research_data", {}).get("tool_results", {})
+        print(f"📊 Processing {len(tool_results)} tool results for history...")
+        for tool_name, tool_result in tool_results.items():
+            if isinstance(tool_result, dict) and 'price_history' in tool_result:
+                symbol = tool_result.get('instrument', 'Unknown')
+                history = tool_result.get('price_history', [])
+                print(f"   📈 Saving {len(history)} price points for {symbol}")
+                for entry in history:
+                    try:
+                        # Convert date string to datetime
+                        date_str = entry["date"]
+                        if 'T' in date_str:
+                            timestamp = datetime.fromisoformat(date_str)
+                        else:
+                            timestamp = datetime.strptime(date_str, "%Y-%m-%d")
+                            
+                        price_data = {
+                            "hypothesis_id": db_hypothesis.id,
+                            "symbol": symbol,
+                            "price": entry["price"],
+                            "volume": entry["volume"],
+                            "timestamp": timestamp
+                        }
+                        PriceHistoryCRUD.create_price_entry(db, price_data)
+                    except Exception as e:
+                        print(f"      ⚠️  Failed to save price history entry: {str(e)}")
+            else:
+                print(f"   ℹ️  Tool result for {tool_name} does not contain price_history")
         
         # Save contradictions with validation
         cleaned_contradictions = []
