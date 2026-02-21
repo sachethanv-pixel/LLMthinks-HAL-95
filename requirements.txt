@@ -48,3 +48,7 @@ google-cloud-core==2.4.3
 googleapis-common-protos==1.70.0
 grpcio==1.71.0
 protobuf==5.29.4
+
+# Performance (faster uvicorn event loop)
+uvloop==0.21.0
+httptools==0.6.4

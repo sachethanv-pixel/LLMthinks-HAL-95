@@ -1,7 +1,6 @@
-# Dockerfile for TradeSage AI Cloud Run Deployment
+# Dockerfile for TradeSage AI Cloud Run Deployment — Optimized for latency
 FROM python:3.11.2-slim
 
-# Set working directory
 WORKDIR /app
 
 # Install system dependencies
@@ -11,36 +10,39 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better Docker layer caching
+# Copy requirements first for Docker layer caching
 COPY requirements.txt .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with fast parallel resolver
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy the entire application
+# Copy application code
 COPY . .
 
-# Set environment variables
+# Environment
 ENV PYTHONPATH=/app
 ENV PORT=8080
 ENV PYTHONUNBUFFERED=1
+# Disable Python startup overhead
+ENV PYTHONDONTWRITEBYTECODE=1
+# Disable tokenizer parallelism warnings
+ENV TOKENIZERS_PARALLELISM=false
 
-# Create a non-root user for security
-RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
+# Non-root user
+RUN useradd --create-home --shell /bin/bash app && chown -R app:app /app
 USER app
 
-# Expose the port
 EXPOSE 8080
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the ADK application with proper host binding for Cloud Run
-ENV TIMEOUT=300
-ENV WORKERS=1
-
-CMD ["uvicorn", "app.adk.main:app", "--host", "0.0.0.0", "--port", "8080", "--timeout-keep-alive", "300", "--workers", "1"]
-# CMD ["uvicorn", "app.adk.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Use 4 workers (matches 4-CPU Cloud Run config), with optimized timeouts
+CMD ["uvicorn", "app.adk.main:app", \
+    "--host", "0.0.0.0", \
+    "--port", "8080", \
+    "--workers", "4", \
+    "--timeout-keep-alive", "300", \
+    "--loop", "uvloop", \
+    "--http", "httptools"]
