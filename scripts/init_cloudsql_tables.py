@@ -1,4 +1,4 @@
-# scripts/init_cloudsql_tables.py
+# scripts/init_cloudsql_tables.p
 """
 Initialize Cloud SQL tables and extensions for TradeSage
 """
