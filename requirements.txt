@@ -50,5 +50,4 @@ grpcio==1.71.0
 protobuf==5.29.4
 
 # Performance (faster uvicorn event loop)
-uvloop==0.21.0
 httptools==0.6.4
