@@ -16,16 +16,10 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy backend code
-COPY . .
+COPY app/ /app/app/
 
-# Copy pre-built React app into the static serving location
-# (build/ is committed to git so Docker can simply copy it)
-RUN if [ -d "frontend/build" ]; then \
-    cp -r frontend/build frontend_build; \
-    echo "Frontend build found and copied"; \
-    else \
-    echo "WARNING: frontend/build not found — API-only mode"; \
-    fi
+# Copy pre-built React app directly into the expected serving location
+COPY frontend/build /app/frontend_build
 
 ENV PYTHONPATH=/app
 ENV PORT=8080

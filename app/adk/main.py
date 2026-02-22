@@ -70,6 +70,16 @@ def _extract_target_price(thesis: str) -> float:
 
 app = FastAPI(title="TradeSage AI - ADK Version", version="2.0.0")
 
+# ── Resolve frontend build directory (local dev OR Docker container) ──
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+_local_build = os.path.abspath(os.path.join(_THIS_DIR, "..", "..", "frontend", "build"))
+FRONTEND_BUILD = (
+    "/app/frontend_build"             # Docker: COPY frontend/build /app/frontend_build
+    if os.path.isdir("/app/frontend_build")
+    else _local_build                 # Local dev: <project_root>/frontend/build
+)
+print(f"[LOG] Frontend build: {'found' if os.path.isdir(FRONTEND_BUILD) else 'NOT FOUND'} at {FRONTEND_BUILD}")
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "*"],
@@ -88,8 +98,7 @@ async def log_requests(request, call_next):
 @app.get("/")
 async def root():
     """Serve React app if built, otherwise return API info."""
-    # Use absolute path — reliable in Docker container (WORKDIR /app, cp -r frontend/build frontend_build)
-    index_path = "/app/frontend_build/index.html"
+    index_path = os.path.join(FRONTEND_BUILD, "index.html")
     if os.path.isfile(index_path):
         return FileResponse(index_path)
     return {"message": "TradeSage AI - Google ADK v1.0.0 Implementation"}
@@ -498,8 +507,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
 
 # ── Serve React frontend (must be LAST — catches all non-API routes) ──
-FRONTEND_BUILD = "/app/frontend_build"
-
+# FRONTEND_BUILD already resolved near top of file
 if os.path.isdir(FRONTEND_BUILD):
     # Serve static assets (JS, CSS, images)
     app.mount("/static", StaticFiles(directory=os.path.join(FRONTEND_BUILD, "static")), name="static")
