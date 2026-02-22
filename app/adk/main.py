@@ -88,7 +88,8 @@ async def log_requests(request, call_next):
 @app.get("/")
 async def root():
     """Serve React app if built, otherwise return API info."""
-    index_path = os.path.join(os.path.dirname(__file__), "..", "..", "frontend_build", "index.html")
+    # Use absolute path — reliable in Docker container (WORKDIR /app, cp -r frontend/build frontend_build)
+    index_path = "/app/frontend_build/index.html"
     if os.path.isfile(index_path):
         return FileResponse(index_path)
     return {"message": "TradeSage AI - Google ADK v1.0.0 Implementation"}
@@ -497,7 +498,7 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=int(os.getenv("PORT", 8080)))
 
 # ── Serve React frontend (must be LAST — catches all non-API routes) ──
-FRONTEND_BUILD = os.path.join(os.path.dirname(__file__), "..", "..", "frontend_build")
+FRONTEND_BUILD = "/app/frontend_build"
 
 if os.path.isdir(FRONTEND_BUILD):
     # Serve static assets (JS, CSS, images)
